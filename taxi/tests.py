@@ -8,8 +8,12 @@ from taxi.models import Manufacturer, Car, Driver
 
 class ModelsTest(TestCase):
     def test_manufacturer_str(self):
-        manufacturer = Manufacturer.objects.create(name="test", country="test")
-        self.assertEqual(str(manufacturer), f"{manufacturer.name} {manufacturer.country}")
+        manufacturer = Manufacturer.objects.create(
+            name="test",
+            country="test")
+        self.assertEqual(
+            str(manufacturer),
+            f"{manufacturer.name} {manufacturer.country}")
 
     def test_driver_str(self):
         driver = get_user_model().objects.create_user(
@@ -18,7 +22,9 @@ class ModelsTest(TestCase):
             first_name="Bob",
             last_name="Smith",
         )
-        self.assertEqual(str(driver), f"{driver.username} ({driver.first_name} {driver.last_name})")
+        self.assertEqual(
+            str(driver),
+            f"{driver.username} ({driver.first_name} {driver.last_name})")
 
     def test_car_str(self):
         manufacturer = Manufacturer.objects.create(name="test", country="test")
@@ -94,18 +100,45 @@ class PrivateCarTest(TestCase):
         res = self.client.post(reverse("taxi:manufacturer-create"), data=form_data)
         new_man = Manufacturer.objects.get(name=form_data["name"])
         self.assertEqual(new_man.name, form_data["name"])
-        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.status_code, 302)
+
+
+class CarCreateTest(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="admin", password="admin123", is_staff=True
+        )
+        self.client.login(username="admin", password="admin123")
+
+        self.manufacturer = Manufacturer.objects.create(name="Tesla", country="USA")
+
+        self.driver1 = Driver.objects.create_user(
+            username="driver1", password="testpass1", license_number="AAA111"
+        )
+        self.driver2 = Driver.objects.create_user(
+            username="driver2", password="testpass2", license_number="BBB222"
+        )
 
     def test_create_car(self):
         form_data = {
-            "model": "test",
-            "manufacturer": "test",
-            "drivers": "test",
+            "model": "Cybertruck",
+            "manufacturer": self.manufacturer.id,
+            "drivers": [self.driver1.id, self.driver2.id],
         }
-        self.client.post(reverse("taxi:car-create"), data=form_data)
-        new_car = Car.objects.get(model=form_data["model"])
+
+        response = self.client.post(reverse("taxi:car-create"), data=form_data)
+
+        self.assertEqual(response.status_code, 302)  # Очікується редірект після успішного створення
+
+        new_car = Car.objects.get(model="Cybertruck")
+
         self.assertEqual(new_car.model, form_data["model"])
-        self.assertEqual(new_car.manufacturer, form_data["manufacturer"])
+        self.assertEqual(new_car.manufacturer, self.manufacturer)
+        self.assertQuerysetEqual(
+            new_car.drivers.order_by("id"),
+            Driver.objects.filter(id__in=[self.driver1.id, self.driver2.id]).order_by("id"),
+            transform=lambda x: x
+        )
 
 
 class DriverListViewTest(TestCase):
@@ -117,13 +150,13 @@ class DriverListViewTest(TestCase):
         self.client.login(username="admin", password=self.password)
 
         Driver.objects.create_user(
-            username="john_doe", password="pass1", license_number="ABC123"
+            username="john_doe", password="pass1", license_number="ABC12123"
         )
         Driver.objects.create_user(
-            username="jane_smith", password="pass2", license_number="XYZ456"
+            username="jane_smith", password="pass2", license_number="XYZ34456"
         )
         Driver.objects.create_user(
-            username="alice", password="pass3", license_number="LMN789"
+            username="alice", password="pass3", license_number="LMN35789"
         )
 
     def test_search_by_username(self):
