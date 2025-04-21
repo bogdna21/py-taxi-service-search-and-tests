@@ -8,7 +8,7 @@ from taxi.models import Manufacturer, Car, Driver
 
 class ModelsTest(TestCase):
     def test_manufacturer_str(self):
-        manufacturer = Manufacturer.objects.create(name="test")
+        manufacturer = Manufacturer.objects.create(name="test", country="test")
         self.assertEqual(str(manufacturer), f"{manufacturer.name} {manufacturer.country}")
 
     def test_driver_str(self):
@@ -21,7 +21,7 @@ class ModelsTest(TestCase):
         self.assertEqual(str(driver), f"{driver.username} ({driver.first_name} {driver.last_name})")
 
     def test_car_str(self):
-        manufacturer = Manufacturer.objects.create(name="test")
+        manufacturer = Manufacturer.objects.create(name="test", country="test")
         driver = get_user_model().objects.create_user(
             username="test",
             password="test123",
@@ -58,7 +58,7 @@ class PrivateCarTest(TestCase):
         self.client.force_login(self.user)
 
     def test_retrieve_car(self):
-        manufacturer = Manufacturer.objects.create(name="test")
+        manufacturer = Manufacturer.objects.create(name="test", country="test")
         Car.objects.create(model="test", manufacturer=manufacturer)
         url = reverse("taxi:car-list")
         res = self.client.get(url)
@@ -85,3 +85,133 @@ class PrivateCarTest(TestCase):
         # тепер можна шукати
         new_driver = Driver.objects.get(license_number=form_data["license_number"])
         self.assertEqual(new_driver.username, form_data["username"])
+
+    def test_create_manufacturer(self):
+        form_data = {
+            "name": "test",
+            "country": "test",
+        }
+        res = self.client.post(reverse("taxi:manufacturer-create"), data=form_data)
+        new_man = Manufacturer.objects.get(name=form_data["name"])
+        self.assertEqual(new_man.name, form_data["name"])
+        self.assertEqual(res.status_code, 200)
+
+    def test_create_car(self):
+        form_data = {
+            "model": "test",
+            "manufacturer": "test",
+            "drivers": "test",
+        }
+        self.client.post(reverse("taxi:car-create"), data=form_data)
+        new_car = Car.objects.get(model=form_data["model"])
+        self.assertEqual(new_car.model, form_data["model"])
+        self.assertEqual(new_car.manufacturer, form_data["manufacturer"])
+
+
+class DriverListViewTest(TestCase):
+    def setUp(self):
+        self.password = "testpass123"
+        self.user = get_user_model().objects.create_user(
+            username="admin", password=self.password, is_staff=True
+        )
+        self.client.login(username="admin", password=self.password)
+
+        Driver.objects.create_user(
+            username="john_doe", password="pass1", license_number="ABC123"
+        )
+        Driver.objects.create_user(
+            username="jane_smith", password="pass2", license_number="XYZ456"
+        )
+        Driver.objects.create_user(
+            username="alice", password="pass3", license_number="LMN789"
+        )
+
+    def test_search_by_username(self):
+        response = self.client.get(
+            reverse("taxi:driver-list"), {"username": "john"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        drivers = response.context["driver_list"]  # or "object_list"
+        self.assertEqual(len(drivers), 1)
+        self.assertEqual(drivers[0].username, "john_doe")
+
+    def test_search_no_results(self):
+        response = self.client.get(
+            reverse("taxi:driver-list"), {"username": "notfound"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        drivers = response.context["driver_list"]
+        self.assertEqual(len(drivers), 0)
+
+
+class CarListViewTest(TestCase):
+    def setUp(self):
+        self.password = "testpass123"
+        self.user = get_user_model().objects.create_user(
+            username="admin", password=self.password, is_staff=True
+        )
+        self.client.login(username="admin", password=self.password)
+
+        self.manufacturer = Manufacturer.objects.create(
+            name="Tesla", country="USA"
+        )
+
+        Car.objects.create(model="Model S", manufacturer=self.manufacturer)
+        Car.objects.create(model="Cybertruck", manufacturer=self.manufacturer)
+        Car.objects.create(model="Mustang", manufacturer=self.manufacturer)
+
+    def test_search_by_model(self):
+        response = self.client.get(
+            reverse("taxi:car-list"), {"model": "model"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        cars = response.context["car_list"]  # або object_list
+        self.assertEqual(len(cars), 1)
+        self.assertEqual(cars[0].model, "Model S")
+
+    def test_search_no_results(self):
+        response = self.client.get(
+            reverse("taxi:car-list"), {"model": "somethingunknown"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        cars = response.context["car_list"]
+        self.assertEqual(len(cars), 0)
+
+
+class ManufacturerListViewTest(TestCase):
+    def setUp(self):
+        self.password = "testpass123"
+        self.user = get_user_model().objects.create_user(
+            username="admin", password=self.password, is_staff=True
+        )
+        self.client.login(username="admin", password=self.password)
+
+        Manufacturer.objects.create(name="Tesla", country="USA")
+        Manufacturer.objects.create(name="Toyota", country="Japan")
+        Manufacturer.objects.create(name="Ford", country="USA")
+
+    def test_search_by_name(self):
+        response = self.client.get(
+            reverse("taxi:manufacturer-list"), {"name": "tes"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        manufacturers = response.context["manufacturer_list"]  # або object_list
+        self.assertEqual(len(manufacturers), 1)
+        self.assertEqual(manufacturers[0].name, "Tesla")
+
+    def test_search_no_results(self):
+        response = self.client.get(
+            reverse("taxi:manufacturer-list"), {"name": "BMW"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        manufacturers = response.context["manufacturer_list"]
+        self.assertEqual(len(manufacturers), 0)
